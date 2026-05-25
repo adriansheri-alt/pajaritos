@@ -153,40 +153,5 @@ lucide-react/dist/esm/lucide-react.js:
 */
 
 </script>
-
-<script>
-(function() {
-  function hideCounter() {
-    // Buscar el span con className "ml-auto" en el header del feed
-    // El header tiene "valentina · adrián" como hermano
-    const spans = document.querySelectorAll('span.ml-auto');
-    for (const span of spans) {
-      // Verificar que sea hermano de un elemento que contenga "valentina"
-      const parent = span.parentElement;
-      if (!parent) continue;
-      const parentText = (parent.textContent || '').toLowerCase();
-      if (parentText.indexOf('valentina') !== -1 && parentText.indexOf('adri') !== -1) {
-        span.style.display = 'none';
-      }
-    }
-  }
-  
-  // Ejecutar inmediatamente y observar cambios
-  hideCounter();
-  
-  const observer = new MutationObserver(hideCounter);
-  if (document.body) {
-    observer.observe(document.body, { childList: true, subtree: true });
-  } else {
-    document.addEventListener('DOMContentLoaded', function() {
-      observer.observe(document.body, { childList: true, subtree: true });
-      hideCounter();
-    });
-  }
-  
-  // Backup: revisar cada 2 segundos
-  setInterval(hideCounter, 2000);
-})();
-</script>
 </body>
 </html>
