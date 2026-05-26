@@ -153,5 +153,244 @@ lucide-react/dist/esm/lucide-react.js:
 */
 
 </script>
+
+<script>
+/* ============================================================================
+   PAJARITOS — MODO SOLO LECTURA
+   - Bloquea escrituras a Supabase
+   - Oculta botones de subir/editar/comentar/like
+   - Oculta inputs y textareas (excepto password)
+   - Oculta indicadores de presencia en chat
+   - Oculta contador "-51" del header
+   ============================================================================ */
+(function() {
+  'use strict';
+
+  const HIDDEN = 'data-readonly-hidden';
+
+  // ============================================================
+  // 1. Interceptar fetch — bloquear escrituras a Supabase
+  // ============================================================
+  const origFetch = window.fetch;
+  window.fetch = function(url, options) {
+    try {
+      const method = ((options && options.method) || 'GET').toUpperCase();
+      const urlStr = typeof url === 'string' ? url : ((url && url.url) || '');
+      // Permitir GET, HEAD, OPTIONS y todas las llamadas de auth
+      if (urlStr.indexOf('supabase.co') !== -1 &&
+          method !== 'GET' && method !== 'HEAD' && method !== 'OPTIONS' &&
+          urlStr.indexOf('/auth/') === -1 &&
+          urlStr.indexOf('/storage/') === -1) {
+        // Bloquear escritura — devolver respuesta vacía exitosa
+        return Promise.resolve(new Response('[]', {
+          status: 200,
+          statusText: 'OK',
+          headers: { 'Content-Type': 'application/json' },
+        }));
+      }
+    } catch (e) {}
+    return origFetch.apply(this, arguments);
+  };
+
+  // También bloquear XMLHttpRequest por si acaso
+  const origXHROpen = XMLHttpRequest.prototype.open;
+  XMLHttpRequest.prototype.open = function(method, url) {
+    try {
+      const m = (method || 'GET').toUpperCase();
+      if (typeof url === 'string' && url.indexOf('supabase.co') !== -1 &&
+          m !== 'GET' && m !== 'HEAD' && m !== 'OPTIONS' &&
+          url.indexOf('/auth/') === -1 &&
+          url.indexOf('/storage/') === -1) {
+        this._readonlyBlocked = true;
+      }
+    } catch (e) {}
+    return origXHROpen.apply(this, arguments);
+  };
+  const origXHRSend = XMLHttpRequest.prototype.send;
+  XMLHttpRequest.prototype.send = function() {
+    if (this._readonlyBlocked) {
+      Object.defineProperty(this, 'readyState', { value: 4, writable: false });
+      Object.defineProperty(this, 'status', { value: 200, writable: false });
+      Object.defineProperty(this, 'responseText', { value: '[]', writable: false });
+      setTimeout(() => {
+        if (typeof this.onreadystatechange === 'function') this.onreadystatechange();
+        if (typeof this.onload === 'function') this.onload();
+      }, 0);
+      return;
+    }
+    return origXHRSend.apply(this, arguments);
+  };
+
+  // ============================================================
+  // 2. Ocultar UI de escritura
+  // ============================================================
+  // Términos que indican un botón de "escritura"
+  const WRITE_TERMS = [
+    '+ memoria', '+memoria',
+    '+ foto', '+foto',
+    '+ place', '+place', '+ lugar', '+lugar',
+    '+ visión', '+visión', '+ vision', '+vision',
+    '+ frase', '+frase',
+    '+ comentario', '+comentario',
+    'cambiar foto', 'cambiar',
+    'enviar', 'publicar', 'subir',
+    'guardar', 'editar',
+    'eliminar', 'borrar',
+    'agregar', 'añadir', 'crear',
+    'responder',
+  ];
+
+  // Tabs/botones que NUNCA hay que ocultar (palabra exacta)
+  const KEEP_EXACT = ['todo', 'memorias', 'places', 'vision', 'chat', 'diario', 'entrar', 'salir', 'diario >', 'cerrar', 'cancelar', 'volver'];
+
+  function shouldHideButton(btn) {
+    const rawText = (btn.textContent || '').trim();
+    const text = rawText.toLowerCase();
+    if (!text) {
+      // Botón sin texto (probablemente solo SVG) — puede ser like, comentar, etc.
+      // Verificar si tiene SVG y está cerca de contenido de feed
+      const svg = btn.querySelector('svg');
+      if (svg) {
+        // Ocultar botones sin texto que tengan SVG y NO sean parte de la barra inferior de tabs
+        // ni de los avatares del header
+        // Heurística: si el botón tiene aria-label de like/heart/comment, ocultar
+        const aria = (btn.getAttribute('aria-label') || '').toLowerCase();
+        if (aria.indexOf('like') !== -1 || aria.indexOf('heart') !== -1 ||
+            aria.indexOf('comment') !== -1 || aria.indexOf('coment') !== -1 ||
+            aria.indexOf('me gusta') !== -1) {
+          return true;
+        }
+      }
+      return false;
+    }
+    // No ocultar palabras exactas que son navegación
+    if (KEEP_EXACT.indexOf(text) !== -1) return false;
+    // Verificar términos de escritura
+    for (const term of WRITE_TERMS) {
+      if (text.indexOf(term) !== -1) return true;
+    }
+    return false;
+  }
+
+  // Términos para detectar mensajes/indicadores de presencia
+  const PRESENCE_TERMS = [
+    'está aquí', 'esta aqui', 'está en línea', 'esta en linea',
+    'entró', 'entro a', 'se conectó', 'se conecto',
+    'salió', 'salio',
+    'viendo ahora', 'viendo el feed',
+  ];
+
+  // Lucide heart icon paths típicos (likes)
+  const HEART_PATH_HINT = 'M19 14c1.49';
+
+  function hideElements() {
+    // Botones
+    const buttons = document.querySelectorAll('button:not([' + HIDDEN + '])');
+    for (let i = 0; i < buttons.length; i++) {
+      const btn = buttons[i];
+      if (shouldHideButton(btn)) {
+        btn.style.display = 'none';
+        btn.setAttribute(HIDDEN, '1');
+      }
+    }
+
+    // Inputs (excepto password) y textareas
+    const inputs = document.querySelectorAll('input:not([type="password"]):not([' + HIDDEN + '])');
+    for (let i = 0; i < inputs.length; i++) {
+      inputs[i].style.display = 'none';
+      inputs[i].setAttribute(HIDDEN, '1');
+    }
+    const textareas = document.querySelectorAll('textarea:not([' + HIDDEN + '])');
+    for (let i = 0; i < textareas.length; i++) {
+      textareas[i].style.display = 'none';
+      textareas[i].setAttribute(HIDDEN, '1');
+    }
+
+    // Botones de like (corazón) por SVG path — heurística
+    // Buscar SVGs con path de corazón
+    const allSvgs = document.querySelectorAll('svg:not([' + HIDDEN + '])');
+    for (let i = 0; i < allSvgs.length; i++) {
+      const svg = allSvgs[i];
+      const paths = svg.querySelectorAll('path');
+      let isHeart = false;
+      for (let j = 0; j < paths.length; j++) {
+        const d = paths[j].getAttribute('d') || '';
+        if (d.indexOf('M19 14c1.49') !== -1 || d.indexOf('M20.84 4.61') !== -1 ||
+            d.indexOf('21,9') !== -1 || d.indexOf('M3.5 12') !== -1) {
+          isHeart = true; break;
+        }
+      }
+      if (isHeart) {
+        // Subir al botón más cercano y ocultarlo
+        let parent = svg.parentElement;
+        for (let k = 0; k < 4 && parent; k++) {
+          if (parent.tagName === 'BUTTON') {
+            parent.style.display = 'none';
+            parent.setAttribute(HIDDEN, '1');
+            break;
+          }
+          parent = parent.parentElement;
+        }
+      }
+    }
+
+    // Contador "-51" (span con ml-auto en header VALENTINA · ADRIÁN)
+    const mlAutoSpans = document.querySelectorAll('span.ml-auto:not([' + HIDDEN + '])');
+    for (let i = 0; i < mlAutoSpans.length; i++) {
+      const span = mlAutoSpans[i];
+      const parent = span.parentElement;
+      if (!parent) continue;
+      const ptext = (parent.textContent || '').toLowerCase();
+      if (ptext.indexOf('valentina') !== -1 && ptext.indexOf('adri') !== -1) {
+        span.style.display = 'none';
+        span.setAttribute(HIDDEN, '1');
+      }
+    }
+
+    // Indicadores de presencia
+    const allDivs = document.querySelectorAll('div:not([' + HIDDEN + '])');
+    for (let i = 0; i < allDivs.length; i++) {
+      const div = allDivs[i];
+      // Solo hojas con texto corto (mensajes)
+      if (div.children.length > 3) continue;
+      const text = (div.textContent || '').trim().toLowerCase();
+      if (!text || text.length > 80) continue;
+      let isPresence = false;
+      for (let j = 0; j < PRESENCE_TERMS.length; j++) {
+        if (text.indexOf(PRESENCE_TERMS[j]) !== -1) { isPresence = true; break; }
+      }
+      if (isPresence) {
+        div.style.display = 'none';
+        div.setAttribute(HIDDEN, '1');
+      }
+    }
+  }
+
+  // ============================================================
+  // 3. Init con debounce
+  // ============================================================
+  let scheduled = null;
+  function scheduleHide() {
+    if (scheduled) return;
+    scheduled = requestAnimationFrame(function() {
+      scheduled = null;
+      try { hideElements(); } catch (e) {}
+    });
+  }
+
+  function init() {
+    hideElements();
+    const obs = new MutationObserver(scheduleHide);
+    obs.observe(document.body, { childList: true, subtree: true });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+})();
+
+</script>
 </body>
 </html>
