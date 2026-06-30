@@ -334,18 +334,7 @@ lucide-react/dist/esm/lucide-react.js:
       }
     }
 
-    // Contador "-51" (span con ml-auto en header VALENTINA · ADRIÁN)
-    const mlAutoSpans = document.querySelectorAll('span.ml-auto:not([' + HIDDEN + '])');
-    for (let i = 0; i < mlAutoSpans.length; i++) {
-      const span = mlAutoSpans[i];
-      const parent = span.parentElement;
-      if (!parent) continue;
-      const ptext = (parent.textContent || '').toLowerCase();
-      if (ptext.indexOf('valentina') !== -1 && ptext.indexOf('adri') !== -1) {
-        span.style.display = 'none';
-        span.setAttribute(HIDDEN, '1');
-      }
-    }
+    // (contador de días: AHORA VISIBLE — se dejó de ocultar a propósito)
 
     // Indicadores de presencia
     const allDivs = document.querySelectorAll('div:not([' + HIDDEN + '])');
@@ -367,6 +356,42 @@ lucide-react/dist/esm/lucide-react.js:
   }
 
   // ============================================================
+  // Contador: cuando llega a 0 o pasa la fecha ancla, fijar "0"
+  // ============================================================
+  function fixCounterZero() {
+    var target = new Date(2026, 6, 1); // 1 julio 2026
+    target.setHours(0, 0, 0, 0);
+    var today = new Date();
+    today.setHours(0, 0, 0, 0);
+    var days = Math.round((target - today) / 864e5);
+    if (days > 0) return; // antes de la fecha: la cuenta regresiva la maneja la app
+
+    // days <= 0: asegurar que se muestre "0" fijo en el header
+    var spans = document.querySelectorAll('span.ml-auto');
+    for (var i = 0; i < spans.length; i++) {
+      var span = spans[i];
+      var parent = span.parentElement;
+      if (!parent) continue;
+      var ptext = (parent.textContent || '').toLowerCase();
+      if (ptext.indexOf('valentina') === -1 || ptext.indexOf('adri') === -1) continue;
+
+      var current = (span.textContent || '').replace(/[\u2212\-\s]/g, '').trim();
+      if (current === '0' && span.querySelector('[data-counter-zero]')) continue; // ya está fijo
+
+      span.innerHTML = '';
+      var zero = document.createElement('span');
+      zero.style.fontFamily = "'Geist Mono', monospace";
+      zero.style.fontSize = '11px';
+      zero.style.letterSpacing = '0.1em';
+      zero.style.color = '#A8A29E';
+      zero.style.fontVariantNumeric = 'tabular-nums';
+      zero.textContent = '0';
+      zero.setAttribute('data-counter-zero', '1');
+      span.appendChild(zero);
+    }
+  }
+
+  // ============================================================
   // 3. Init con debounce
   // ============================================================
   let scheduled = null;
@@ -375,13 +400,17 @@ lucide-react/dist/esm/lucide-react.js:
     scheduled = requestAnimationFrame(function() {
       scheduled = null;
       try { hideElements(); } catch (e) {}
+      try { fixCounterZero(); } catch (e) {}
     });
   }
 
   function init() {
     hideElements();
+    try { fixCounterZero(); } catch (e) {}
     const obs = new MutationObserver(scheduleHide);
     obs.observe(document.body, { childList: true, subtree: true });
+    // respaldo: revisar cada minuto por si cambia el día con la página abierta
+    setInterval(function() { try { fixCounterZero(); } catch (e) {} }, 60000);
   }
 
   if (document.readyState === 'loading') {
